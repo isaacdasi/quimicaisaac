@@ -2,60 +2,159 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minijuego Phaser - Atrapa el Átomo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Plataformero Químico</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #222; }
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #111; touch-action: none; overflow: hidden; }
     </style>
 </head>
 <body>
+
 <script>
     const config = {
         type: Phaser.AUTO,
-        width: 400,
-        height: 600,
-        physics: { default: 'arcade', arcade: { gravity: { y: 150 }, debug: false } },
-        scene: { create: create, update: update }
+        width: 800,
+        height: 400,
+        physics: {
+            default: 'arcade',
+            arcade: { gravity: { y: 500 }, debug: false }
+        },
+        // ¡NUEVO!: Agregamos "preload" a la lista de escenas
+        scene: { preload: preload, create: create, update: update },
+        scale: {
+            mode: Phaser.Scale.FIT,
+            autoCenter: Phaser.Scale.CENTER_BOTH
+        }
     };
 
-    let matraz; let atomos; let puntaje = 0; let textoPuntaje;
+    let jugador;
+    let plataformas;
+    let electrones;
+    let cursores;
+    let textoPuntaje;
+    let carga = 3; 
+
+    let moviendoIzquierda = false;
+    let moviendoDerecha = false;
+    let intentandoSaltar = false;
+
+    // ---------------------------------------------------------
+    // ¡NUEVA FUNCIÓN!: PRELOAD
+    // Aquí le decimos a Phaser qué archivos descargar antes de empezar
+    // ---------------------------------------------------------
+    function preload() {
+        // Cargamos la imagen y le damos el nombre "fondo"
+        this.load.image('fondo', 'a.jpg');
+        
+        // Cargamos la canción y le damos el nombre "musicaFondo"
+        this.load.audio('musicaFondo', 'a.mp3');
+    }
 
     function create() {
-        this.cameras.main.setBackgroundColor('#2d2d2d');
-        matraz = this.add.rectangle(200, 550, 80, 20, 0x00aaff);
-        this.physics.add.existing(matraz);
-        matraz.body.setImmovable(true);
-        matraz.body.allowGravity = false;
+        // ¡NUEVO!: Colocamos el fondo primero para que quede detrás de todo
+        // (400 y 200 es el centro de nuestra pantalla de 800x400)
+        let imagenFondo = this.add.image(400, 200, 'fondo');
+        // Si la imagen es muy grande o muy chica, esto hace que ocupe toda la pantalla
+        imagenFondo.setDisplaySize(800, 400);
 
-        textoPuntaje = this.add.text(16, 16, 'Atomos atrapados: 0', { fontSize: '24px', fill: '#ffffff' });
-        atomos = this.physics.add.group();
+        // ¡NUEVO!: Reproducimos la música y le decimos que se repita (loop: true)
+        let musica = this.sound.add('musicaFondo', { loop: true, volume: 0.5 });
+        
+        // Nota importante sobre la música en los navegadores:
+        // Los navegadores modernos bloquean el audio hasta que el usuario toca la pantalla.
+        // Así que le decimos al juego: "Apenas el usuario toque la pantalla, pon la música".
+        this.input.once('pointerdown', () => {
+            musica.play();
+        });
 
-        this.time.addEvent({ delay: 1000, callback: generarAtomo, callbackScope: this, loop: true });
-        this.physics.add.overlap(matraz, atomos, atraparAtomo, null, this);
+        // 1. LAS PLATAFORMAS
+        plataformas = this.physics.add.staticGroup();
+        plataformas.add(this.add.rectangle(400, 390, 800, 40, 0x7f8c8d)); 
+        plataformas.add(this.add.rectangle(600, 280, 150, 20, 0x7f8c8d));
+        plataformas.add(this.add.rectangle(150, 200, 150, 20, 0x7f8c8d));
+        plataformas.add(this.add.rectangle(400, 120, 100, 20, 0x7f8c8d));
+
+        // 2. EL JUGADOR
+        jugador = this.add.rectangle(100, 300, 30, 30, 0xff3333);
+        this.physics.add.existing(jugador);
+        jugador.body.setBounce(0.1); 
+        jugador.body.setCollideWorldBounds(true); 
+
+        // 3. LOS ELECTRONES
+        electrones = this.physics.add.group();
+        let e1 = this.add.circle(600, 230, 10, 0xf1c40f);
+        let e2 = this.add.circle(150, 150, 10, 0xf1c40f);
+        let e3 = this.add.circle(400, 70, 10, 0xf1c40f);
+        electrones.addMultiple([e1, e2, e3]);
+        
+        electrones.children.iterate(function (child) {
+            this.physics.add.existing(child);
+            child.body.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8)); 
+        }, this);
+
+        // 4. COLISIONES
+        this.physics.add.collider(jugador, plataformas); 
+        this.physics.add.collider(electrones, plataformas); 
+        this.physics.add.overlap(jugador, electrones, recolectarElectron, null, this);
+        
+        cursores = this.input.keyboard.createCursorKeys();
+        textoPuntaje = this.add.text(16, 16, 'Carga del ion: +' + carga, { fontSize: '24px', fill: '#fff', fontStyle: 'bold' });
+
+        // 5. INTERFAZ TÁCTIL
+        this.input.addPointer(2); 
+
+        let btnIzq = this.add.circle(80, 320, 40, 0x000000, 0.5).setInteractive();
+        this.add.text(65, 300, '<', { fontSize: '40px', fill: '#fff' });
+
+        let btnDer = this.add.circle(180, 320, 40, 0x000000, 0.5).setInteractive();
+        this.add.text(165, 300, '>', { fontSize: '40px', fill: '#fff' });
+
+        let btnSalto = this.add.circle(720, 320, 40, 0x000000, 0.5).setInteractive();
+        this.add.text(705, 305, '^', { fontSize: '40px', fill: '#fff' });
+
+        btnIzq.on('pointerdown', () => { moviendoIzquierda = true; btnIzq.setAlpha(0.8); });
+        btnIzq.on('pointerup', () => { moviendoIzquierda = false; btnIzq.setAlpha(0.5); });
+        btnIzq.on('pointerout', () => { moviendoIzquierda = false; btnIzq.setAlpha(0.5); });
+
+        btnDer.on('pointerdown', () => { moviendoDerecha = true; btnDer.setAlpha(0.8); });
+        btnDer.on('pointerup', () => { moviendoDerecha = false; btnDer.setAlpha(0.5); });
+        btnDer.on('pointerout', () => { moviendoDerecha = false; btnDer.setAlpha(0.5); });
+
+        btnSalto.on('pointerdown', () => { intentandoSaltar = true; btnSalto.setAlpha(0.8); });
+        btnSalto.on('pointerup', () => { intentandoSaltar = false; btnSalto.setAlpha(0.5); });
+        btnSalto.on('pointerout', () => { intentandoSaltar = false; btnSalto.setAlpha(0.5); });
     }
 
     function update() {
-        if (this.input.activePointer.isDown || this.input.activePointer.x > 0) {
-            matraz.x = Phaser.Math.Clamp(this.input.activePointer.x, 40, 360);
+        if (cursores.left.isDown || moviendoIzquierda) {
+            jugador.body.setVelocityX(-200);
+        } else if (cursores.right.isDown || moviendoDerecha) {
+            jugador.body.setVelocityX(200);
+        } else {
+            jugador.body.setVelocityX(0);
+        }
+
+        if ((cursores.up.isDown || intentandoSaltar) && jugador.body.touching.down) {
+            jugador.body.setVelocityY(-350);
         }
     }
 
-    function generarAtomo() {
-        let xAleatorio = Phaser.Math.Between(20, 380);
-        let atomo = this.add.circle(xAleatorio, 0, 15, 0xff3333);
-        this.physics.add.existing(atomo);
-        atomos.add(atomo);
-    }
-
-    function atraparAtomo(jugador, atomo) {
-        atomo.destroy();
-        puntaje += 1;
-        textoPuntaje.setText('Atomos atrapados: ' + puntaje);
-        this.tweens.add({ targets: jugador, scaleX: 1.2, scaleY: 1.2, duration: 100, yoyo: true });
+    function recolectarElectron(jugador, electron) {
+        electron.destroy(); 
+        carga -= 1; 
+        
+        if(carga > 0) {
+            textoPuntaje.setText('Carga del ion: +' + carga);
+        } else {
+            textoPuntaje.setText('¡Átomo Neutralizado!');
+            textoPuntaje.setColor('#00ff00'); 
+            jugador.fillColor = 0x88cc88; 
+        }
     }
 
     const game = new Phaser.Game(config);
 </script>
+
 </body>
 </html>
