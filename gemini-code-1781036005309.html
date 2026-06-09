@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minijuego Phaser - Atrapa el Átomo</title>
+    <!-- Importamos la librería de Phaser directamente desde internet -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        /* Centramos el juego en la pantalla y ponemos fondo oscuro */
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+        }
+    </style>
+</head>
+<body>
+
+<script>
+    // 1. CONFIGURACIÓN DEL JUEGO
+    const config = {
+        type: Phaser.AUTO,
+        width: 400,
+        height: 600,
+        physics: {
+            default: 'arcade', // Motor de físicas 2D sencillo
+            arcade: {
+                gravity: { y: 150 }, // Gravedad para que los átomos caigan
+                debug: false
+            }
+        },
+        scene: {
+            create: create,
+            update: update
+        }
+    };
+
+    // Variables globales
+    let matraz;
+    let atomos;
+    let puntaje = 0;
+    let textoPuntaje;
+
+    // 2. CREACIÓN DE LOS ELEMENTOS (Se ejecuta una vez al iniciar)
+    function create() {
+        // Fondo del laboratorio
+        this.cameras.main.setBackgroundColor('#2d2d2d');
+
+        // Crear el "Matraz" (Jugador) - Un rectángulo azul
+        matraz = this.add.rectangle(200, 550, 80, 20, 0x00aaff);
+        this.physics.add.existing(matraz);
+        matraz.body.setImmovable(true);    // Para que los átomos no lo empujen hacia abajo
+        matraz.body.allowGravity = false;  // El jugador no se cae
+
+        // Texto del puntaje
+        textoPuntaje = this.add.text(16, 16, 'Átomos atrapados: 0', { fontSize: '24px', fill: '#ffffff' });
+
+        // Grupo para los átomos que caen
+        atomos = this.physics.add.group();
+
+        // Temporizador: Crea un nuevo átomo cada 1 segundo (1000 ms)
+        this.time.addEvent({
+            delay: 1000,
+            callback: generarAtomo,
+            callbackScope: this,
+            loop: true
+        });
+
+        // Detector de colisiones: Si el matraz toca un átomo, llama a la función "atrapar"
+        this.physics.add.overlap(matraz, atomos, atraparAtomo, null, this);
+    }
+
+    // 3. BUCLE DEL JUEGO (Se ejecuta 60 veces por segundo)
+    function update() {
+        // El matraz sigue la posición X del mouse o del dedo en la pantalla
+        if (this.input.activePointer.isDown || this.input.activePointer.x > 0) {
+            matraz.x = Phaser.Math.Clamp(this.input.activePointer.x, 40, 360);
+        }
+    }
+
+    // 4. FUNCIONES PERSONALIZADAS
+    function generarAtomo() {
+        // Posición horizontal aleatoria
+        let xAleatorio = Phaser.Math.Between(20, 380);
+        
+        // Crear el átomo (Círculo rojo)
+        let atomo = this.add.circle(xAleatorio, 0, 15, 0xff3333);
+        this.physics.add.existing(atomo);
+        
+        // Lo añadimos al grupo
+        atomos.add(atomo);
+    }
+
+    function atraparAtomo(jugador, atomo) {
+        // Destruimos el átomo de la pantalla
+        atomo.destroy();
+        
+        // Sumamos puntos y actualizamos el texto
+        puntaje += 1;
+        textoPuntaje.setText('Átomos atrapados: ' + puntaje);
+        
+        // Pequeño efecto visual (el matraz se hace un poco más grande por un instante)
+        this.tweens.add({
+            targets: jugador,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 100,
+            yoyo: true // Vuelve a su tamaño original
+        });
+    }
+
+    // Iniciar el juego
+    const game = new Phaser.Game(config);
+</script>
+
+</body>
+</html>
